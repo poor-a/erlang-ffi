@@ -194,8 +194,11 @@
 > -- | Return the port address of a named Erlang node.
 > epmdGetPort      :: String -> IO Int
 > epmdGetPort name = do
->     reply <- epmdSend $ 'p' : name
->     return $ runGet getn reply
+>   reply <- epmdSend $ 'z' : name
+>   return $ flip runGet reply $ do
+>                      getn
+>                      port <- getn
+>                      return port
 
 > -- | Returns (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
 > epmdGetPortR4      :: String -> IO (Int, Int, Int, Int, Int, String, String)
