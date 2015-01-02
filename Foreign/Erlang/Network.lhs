@@ -56,8 +56,6 @@
 >     toNetwork' 0 = Nothing
 >     toNetwork' n = let (b, a) = n `divMod` 256 in Just (fromIntegral a, b)
 
-> ntohs n = let (b, a) = n `divMod` 256 in 256*a + b
-
 > erlDigest                  :: String -> Word32 -> [Word8]
 > erlDigest cookie challenge = let
 >     [(n, _)] = readHex . md5sum . C.pack $ cookie ++ show challenge
@@ -117,7 +115,7 @@
 > erlConnect           :: String -> String -> IO (ErlSend, ErlRecv)
 > erlConnect self node = withSocketsDo $ do
 >     port <- epmdGetPort node
->     let port' = PortNumber (PortNum . fromIntegral . ntohs $ port)
+>     let port' = PortNumber . fromIntegral $ port
 >     bracketOnError
 >       (connectTo epmdHost port' >>= \h -> hSetBuffering h NoBuffering >> return h)
 >       hClose $ \h -> do
@@ -197,8 +195,7 @@
 >   reply <- epmdSend $ 'z' : name
 >   return $ flip runGet reply $ do
 >                      getn
->                      port <- getn
->                      return port
+>                      getn
 
 > -- | Returns (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
 > epmdGetPortR4      :: String -> IO (Int, Int, Int, Int, Int, String, String)
