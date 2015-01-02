@@ -23,7 +23,7 @@
 > import Data.Binary
 > import Data.Binary.Get
 > import Data.Binary.Put
-> import Data.Char          (chr, ord)
+> import Data.Char          (chr, ord, isLetter)
 > import qualified Data.ByteString       as B
 > import qualified Data.ByteString.Char8 as C
 
@@ -169,7 +169,12 @@
 >       'h' -> getC >>= \len -> liftM ErlTuple $ forM [1..len] (const getErl)
 >       'i' -> getN >>= \len -> liftM ErlTuple $ forM [1..len] (const getErl)
 >       'j' -> return ErlNull
->       'k' -> getn >>= liftM ErlString . getA
+>       'k' -> do
+>          len <- getn
+>          list <- getA len
+>          case all isLetter list of
+>            True -> return $ ErlString list
+>            False -> return . ErlList $ map (ErlInt . ord) list
 >       'l' -> do
 >         len <- getN
 >         list <- liftM ErlList $ forM [1..len] (const getErl)
