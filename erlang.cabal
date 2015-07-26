@@ -1,0 +1,37 @@
+name:                erlang
+version:             0.1
+stability:           alpha
+description:
+  Speaks the Erlang network protocol and impersonates an Erlang node
+  on the network.  Fully capable of bi-directional communication with
+  Erlang.  Erlang types are, as far as reasonable, mapped to Haskell
+  types.  Messages to Erlang are just function calls in Haskell, and
+  messages from Erlang are delivered to MVars.
+license:             GPL
+license-file:        COPYING
+author:              Eric Sessoms <nubgames@gmail.com>
+maintainer:          nubgames@gmail.com
+homepage:            http://github.com/esessoms/haskell-interface
+category:            Foreign
+synopsis:            FFI interface to Erlang.
+cabal-version:       >= 1.2
+build-type:          Simple
+
+library
+  build-depends:     base,
+                     binary >= 0.4.4,
+                     bytestring,
+                     directory,
+                     filepath,
+                     nano-md5 >= 0.1.2,
+                     network >= 2.2.0.1,
+                     random >= 1.0.0.1
+  exposed-modules:   Foreign.Erlang
+  other-modules:     Foreign.Erlang.Network,
+                     Foreign.Erlang.OTP,
+                     Foreign.Erlang.OTP.GenServer,
+                     Foreign.Erlang.OTP.Mnesia,
+                     Foreign.Erlang.Processes,
+                     Foreign.Erlang.Types,
+                     Foreign.Erlang.Utilities
+  hs-source-dirs:    src
