@@ -6,6 +6,7 @@
 >   
 >   , ErlRecv
 >   , ErlSend
+>   , Node(..)
 >   , erlConnect
 >   , toNetwork
 >   ) where
@@ -112,21 +113,35 @@
 >       ver <- getC
 >       assert (ver == erlangProtocolVersion) $ getErl
 
-> erlConnect           :: String -> String -> IO (ErlSend, ErlRecv)
+> type Name = String
+> type Ip   = String
+
+> -- | The name of an Erlang node on the network.     
+> data Node = Short Name | Port Name Ip
+>                   deriving (Eq,Show)
+>
+> instance Erlang Node where
+>     toErlang (Short name)   = ErlString name
+>     toErlang (Port name ip) = ErlString name
+>     fromErlang = undefined
+>           
+> erlConnect           :: String -> Node -> IO (ErlSend, ErlRecv)
 > erlConnect self node = withSocketsDo $ do
 >     port <- epmdGetPort node
 >     let port' = PortNumber . fromIntegral $ port
->     bracketOnError
->       (connectTo epmdHost port' >>= \h -> hSetBuffering h NoBuffering >> return h)
->       hClose $ \h -> do
+>     withNode epmd port' $ \h -> do
 >         let out = sendMessage packn (B.hPut h)
 >         let inf = recvMessage 2 (B.hGet h)
 >         handshake out inf self
 >         let out' = sendMessage packN (\s -> B.hPut h s >> hFlush h)
 >         let inf' = recvMessage 4 (B.hGet h)
 >         return (erlSend out', erlRecv inf')
+>     where epmd = case node of
+>                    Short _    -> epmdLocal
+>                    Port  _ ip -> ip
 
-> handshake              :: (B.ByteString -> IO ()) -> IO B.ByteString -> String -> IO ()
+                     
+> handshake :: (B.ByteString -> IO ()) -> IO B.ByteString -> String -> IO ()
 > handshake out inf self = do
 >     cookie <- getUserCookie
 >     sendName
@@ -151,9 +166,9 @@
 >     recvChallenge = do
 >         msg <- inf
 >         return . flip runGet msg $ do
->             tag <- getC
->             version <- getn
->             flags <- getN
+>             _tag <- getC
+>             _version <- getn
+>             _flags <- getN
 >             challenge <- getWord32be
 >             return challenge
 
@@ -165,19 +180,29 @@
 >     recvChallengeAck cookie challenge = do
 >         let digest = erlDigest cookie challenge
 >         msg <- inf
->         let reply = take 16 . drop 1 . map (fromIntegral . ord) . B.unpack $ msg
+>         let reply = take 16 . tail . map (fromIntegral . ord) . B.unpack $ msg
 >         assert (digest == reply) $ return ()
 
-> epmdHost = "127.0.0.1"
+> epmdLocal :: String
+> epmdLocal = "127.0.0.1"
+>             
+> epmdPort :: PortID
 > --epmdPort = Service "epmd"
 > epmdPort = PortNumber 4369
 
-> withEpmd = withSocketsDo . bracketOnError
->     (connectTo epmdHost epmdPort >>= \h -> hSetBuffering h NoBuffering >> return h)
+
+> withNode :: String -> PortID -> (Handle -> IO a) -> IO a
+> withNode epmd port = withSocketsDo . bracketOnError
+>     (connectTo epmd port >>= \h -> hSetBuffering h NoBuffering >> return h)
+>     hClose
+>
+> withEpmd :: String -> (Handle -> IO a) -> IO a
+> withEpmd epmd = withSocketsDo . bracketOnError
+>     (connectTo epmd epmdPort >>= \h -> hSetBuffering h NoBuffering >> return h)
 >     hClose
 
-> epmdSend     :: String -> IO B.ByteString
-> epmdSend msg = withEpmd $ \hdl -> do
+> epmdSend     :: String -> String -> IO B.ByteString
+> epmdSend epmd msg = withEpmd epmd $ \hdl -> do
 >     let out = runPut $ putn (length msg) >> putA msg
 >     B.hPut hdl out
 >     hFlush hdl
@@ -186,22 +211,25 @@
 > -- | Return the names and addresses of all registered Erlang nodes.
 > epmdGetNames :: IO [String]
 > epmdGetNames = do
->     reply <- epmdSend "n"
+>     reply <- epmdSend epmdLocal "n"
 >     let txt = runGet (getN >> liftM B.unpack getRemainingLazyByteString) reply
 >     return . lines $ txt
 
 > -- | Return the port address of a named Erlang node.
-> epmdGetPort      :: String -> IO Int
-> epmdGetPort name = do
->   reply <- epmdSend $ 'z' : name
+> epmdGetPort      :: Node -> IO Int
+> epmdGetPort node = do
+>   reply <- epmdSend epmd $ 'z' : nodeName
 >   return $ flip runGet reply $ do
+>                      _ <- getn
 >                      getn
->                      getn
+>     where (nodeName, epmd) = case node of
+>                            Short name    -> (name, epmdLocal)
+>                            Port  name ip -> (name, ip)
 
 > -- | Returns (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
-> epmdGetPortR4      :: String -> IO (Int, Int, Int, Int, Int, String, String)
-> epmdGetPortR4 name = do
->     reply <- epmdSend $ 'z' : name
+> epmdGetPortR4      :: String -> String -> IO (Int, Int, Int, Int, Int, String, String)
+> epmdGetPortR4 epmd name = do
+>     reply <- epmdSend epmd $ 'z' : name
 >     return $ flip runGet reply $ do
 >         getn
 >         port <- getn

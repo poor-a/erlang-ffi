@@ -9,7 +9,7 @@
 >   , mboxRef
 >   , mboxSelf
 >   -- ** Represents Erlang nodes and processes.
->   , Node
+>   , Node(..)
 >   , Pid
 >   -- ** Communication to/from Erlang.
 >   , mboxRecv
@@ -23,17 +23,14 @@
 > import Foreign.Erlang.Network
 > import Foreign.Erlang.Types
 
-> -- | The name of an Erlang node on the network.
-> type Node = String
-
 > data ErlMessage = ErlRegister (ErlType -> IO ())
 >                 | ErlGenRef ErlType
->                 | ErlSend String ErlType ErlType
->                 | ErlRegSend ErlType String String ErlType
->                 | ErlLink ErlType String ErlType
->                 | ErlUnlink ErlType String ErlType
->                 | ErlExit ErlType String ErlType ErlType
->                 | ErlExit2 ErlType String ErlType ErlType
+>                 | ErlSend Node ErlType ErlType
+>                 | ErlRegSend ErlType Node String ErlType
+>                 | ErlLink ErlType Node ErlType
+>                 | ErlUnlink ErlType Node ErlType
+>                 | ErlExit ErlType Node ErlType ErlType
+>                 | ErlExit2 ErlType Node ErlType ErlType
 >                 | ErlDispatch ErlType ErlType
 >                 | ErlStop
 >                 deriving Show
