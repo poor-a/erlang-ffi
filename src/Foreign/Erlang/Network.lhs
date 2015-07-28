@@ -17,7 +17,7 @@
 > import Data.Binary.Put
 > import Data.Bits                ((.|.))
 > import Data.Char                (chr, ord)
-> import Data.Digest.OpenSSL.MD5  (md5sum)
+> import Data.Hash.MD5            (md5i, Str(..))
 > import Data.List                (unfoldr)
 > import Data.Word
 > import Foreign.Erlang.Types
@@ -58,7 +58,7 @@
 
 > erlDigest                  :: String -> Word32 -> [Word8]
 > erlDigest cookie challenge = let
->     [(n, _)] = readHex . md5sum . C.pack $ cookie ++ show challenge
+>     n = fromIntegral . md5i . Str $ cookie ++ show challenge
 >     in toNetwork 16 n
 
 > packn, packN :: B.ByteString -> Put
@@ -169,7 +169,8 @@
 >         assert (digest == reply) $ return ()
 
 > epmdHost = "127.0.0.1"
-> epmdPort = Service "epmd"
+> --epmdPort = Service "epmd"
+> epmdPort = PortNumber 4369
 
 > withEpmd = withSocketsDo . bracketOnError
 >     (connectTo epmdHost epmdPort >>= \h -> hSetBuffering h NoBuffering >> return h)
