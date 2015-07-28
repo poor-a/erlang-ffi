@@ -20,12 +20,14 @@
 
 > import Control.Exception  (assert)
 > import Control.Monad      (forM, liftM)
+> import Data.Monoid ((<>),mconcat)
 > import Data.Binary
 > import Data.Binary.Get
 > import Data.Binary.Put
 > import Data.Char          (chr, ord, isLetter)
-> import qualified Data.ByteString       as B
-> import qualified Data.ByteString.Char8 as C
+> import qualified Data.ByteString.Lazy       as B
+> import qualified Data.ByteString.Lazy.Char8 as C
+> import Data.ByteString.Lazy.Builder
 
 > nth                  :: Erlang a => Int -> ErlType -> a
 > nth i (ErlTuple lst) = fromErlang $ lst !! i
@@ -105,44 +107,38 @@
 >     fromErlang (ErlTuple [x, y, z, w, a]) = (fromErlang x, fromErlang y, fromErlang z, fromErlang w, fromErlang a)
 
 > instance Binary ErlType where
->     put = putErl
+>     put = undefined
 >     get = getErl
 
+      
+> putErl :: ErlType -> Builder
 > putErl (ErlInt val)
->     | 0 <= val && val < 256 = tag 'a' >> putC val
->     | otherwise             = tag 'b' >> putN val
-> putErl (ErlAtom val)        = tag 'd' >> putn (length val) >> putA val
+>     | 0 <= val && val < 256 = tag 'a' <> putC val
+>     | otherwise             = tag 'b' <> putN val
+> putErl (ErlAtom val)        = tag 'd' <> putn (length val) <> putA val
 > putErl (ErlTuple val)
->     | len < 256             = tag 'h' >> putC len >> mapM_ putErl val
->     | otherwise             = tag 'i' >> putN len >> mapM_ putErl val
->   where
->     len = length val
+>     | len < 256             = tag 'h' <> putC len <> val'
+>     | otherwise             = tag 'i' <> putN len <> val'
+>     where val' = mconcat . map putErl $ val
+>           len  = length val
 > putErl ErlNull              = tag 'j'
-> putErl (ErlString val)      = tag 'k' >> putn (length val) >> putA val
-> putErl (ErlList val)        = tag 'l' >> putN (length val) >> mapM_ putErl val >> putErl ErlNull
-> putErl (ErlBinary val)      = tag 'm' >> putN (length val) >> puta val
-> putErl (ErlRef node id creation) = do
->     tag 'e'
->     putErl node
->     putN id
+> putErl (ErlString val)      = tag 'k' <> putn (length val) <> putA val
+> putErl (ErlList val)        = tag 'l' <> putN (length val) <> val' <> putErl ErlNull
+>     where val' = mconcat . map putErl $ val  
+> putErl (ErlBinary val)      = tag 'm' <> putN (length val) <> (lazyByteString . B.pack) val
+> putErl (ErlRef node id creation) =
+>     tag 'e' <>
+>     putErl node <>
+>     putN id <>
 >     putC creation
-> putErl (ErlPort node id creation) = do
->     tag 'f'
->     putErl node
->     putN id
->     putC creation
-> putErl (ErlPid node id serial creation) = do
->     tag 'g'
->     putErl node
->     putN id
->     putN serial
->     putC creation
-> putErl (ErlNewRef node creation id) = do
->     tag 'r'
->     putn $ length id `div` 4
->     putErl node
->     putC creation
->     mapM_ putWord8 id
+> putErl (ErlPort node id creation) = tag 'f' <> putErl node <> putN id <> putC creation
+> putErl (ErlPid node id serial creation) = tag 'g' <> putErl node <> putN id <> putN serial <> putC creation
+> putErl (ErlNewRef node creation id) =
+>     tag 'r' <>
+>     putn (length id `div` 4) <>
+>     putErl node <>
+>     putC creation <>
+>     (lazyByteString . B.pack) id
         
 > getErl = do
 >     tag <- liftM chr getC
@@ -189,16 +185,30 @@
 >         return $ ErlNewRef node creation id
 >       x -> error [x]
 
+> tag :: Char -> Builder             
 > tag = putC . ord
 
-> putC = putWord8 . fromIntegral
-> putn = putWord16be . fromIntegral
-> putN = putWord32be . fromIntegral
-> puta = putByteString . B.pack
-> putA = putByteString . C.pack
+> putC :: Integral a => a -> Builder
+> putC = word8 . fromIntegral
+
+> putn :: Integral a => a -> Builder
+> putn = word16BE . fromIntegral
+
+> putN :: Integral a => a -> Builder
+> putN = word32BE . fromIntegral
+
+> puta :: [Word8] -> Builder
+> puta = lazyByteString . B.pack
+
+> putA :: String -> Builder       
+> putA = lazyByteString . C.pack
 
 > getC = liftM fromIntegral getWord8
+>
+> getn :: Num r => Get r
 > getn = liftM fromIntegral getWord16be
+>
+> getN :: Num r => Get r
 > getN = liftM fromIntegral getWord32be
-> geta = liftM B.unpack . getByteString
-> getA = liftM C.unpack . getByteString
+> geta = liftM B.unpack . getLazyByteString
+> getA = liftM C.unpack . getLazyByteString

@@ -13,9 +13,7 @@
 
 > import Control.Exception        (assert, bracketOnError)
 > import Control.Monad            (liftM)
-> import Data.Binary              (decode, encode)
 > import Data.Binary.Get
-> import Data.Binary.Put
 > import Data.Bits                ((.|.))
 > import Data.Char                (chr, ord)
 > import Data.Hash.MD5            (md5i, Str(..))
@@ -23,16 +21,15 @@
 > import Data.Word
 > import Foreign.Erlang.Types
 > import Network                  (PortID(..), connectTo, withSocketsDo)
-> import Network.Socket           (PortNumber(..))
-> import Numeric                  (readHex)
 > import System.Directory         (getHomeDirectory)
 > import System.FilePath          ((</>))
 > import System.IO
-> import System.IO.Unsafe         (unsafePerformIO)
 > import System.Random            (randomIO)
-> import qualified Data.ByteString.Char8      as C
 > import qualified Data.ByteString.Lazy.Char8 as B
+> import Data.ByteString.Lazy.Builder
+> import Data.Monoid ((<>),mempty)
 
+> erlangVersion :: Int
 > erlangVersion = 5
 > erlangProtocolVersion = 131
 > passThrough = 'p'
@@ -47,11 +44,16 @@
 > flagNewFunTags         =  0x80
 > flagExtendedPidsPorts  = 0x100
 
+> flagExtendedReferences :: Word16
+> flagExtendedPidsPorts :: Word16
+
+
+> getUserCookie :: IO String
 > getUserCookie = do
 >     home <- getHomeDirectory
 >     readFile $ home </> ".erlang.cookie"
 
-> toNetwork     :: Int -> Integer -> [Word8]
+> toNetwork :: Int -> Integer -> [Word8]
 > toNetwork b n = reverse . take b $ unfoldr toNetwork' n ++ repeat 0
 >   where
 >     toNetwork' 0 = Nothing
@@ -62,14 +64,16 @@
 >     n = fromIntegral . md5i . Str $ cookie ++ show challenge
 >     in toNetwork 16 n
 
-> packn, packN :: B.ByteString -> Put
-> packn msg = putn (fromIntegral . B.length $ msg) >> putLazyByteString msg
-> packN msg = putN (fromIntegral . B.length $ msg) >> putLazyByteString msg
+> packn, packN :: Builder -> Builder
+> packn msg = putn (B.length msg') <> msg
+>     where msg' = toLazyByteString msg
+> packN msg = putN (B.length msg') <> msg
+>     where msg' = toLazyByteString msg
 
-> sendMessage :: (B.ByteString -> Put) -> (B.ByteString -> IO ()) -> B.ByteString -> IO ()
-> sendMessage pack out = out . runPut . pack
+> sendMessage :: (Builder -> Builder) -> (Builder -> IO ()) -> Builder -> IO ()
+> sendMessage pack out = out . pack
 
-> recvMessage            :: Int -> (Int -> IO B.ByteString) -> IO B.ByteString
+> recvMessage :: Int -> (Int -> IO B.ByteString) -> IO B.ByteString
 > recvMessage hdrlen inf = (liftM (unpack hdrlen) $ inf hdrlen) >>= inf
 >   where
 >     unpack 2 = runGet getn
@@ -78,18 +82,18 @@
 > type ErlSend = (Maybe ErlType, Maybe ErlType) -> IO ()
 > type ErlRecv = IO (Maybe ErlType, Maybe ErlType)
       
-> erlSend :: (B.ByteString -> IO ()) -> ErlSend
-> erlSend send (Nothing, _)    = send B.empty
-> erlSend send (Just ctl, msg) = send . runPut $ do
->     tag passThrough
->     putMsg ctl
->     maybe (return ()) putMsg msg
+> erlSend :: (Builder -> IO ()) -> ErlSend
+> erlSend send (Nothing, _)    = send . lazyByteString $ B.empty
+> erlSend send (Just ctl, msg) = send $
+>     tag passThrough <>
+>     putMsg ctl <>
+>     maybe mempty putMsg msg
 >   where
->     putMsg msg = do
->       putC erlangProtocolVersion
+>     putMsg msg = 
+>       putC erlangProtocolVersion <>
 >       putErl msg
       
-> erlRecv      :: IO B.ByteString -> ErlRecv
+> erlRecv :: IO B.ByteString -> ErlRecv
 > erlRecv recv = do
 >     bytes <- recv
 >     return . flip runGet bytes $ do
@@ -125,15 +129,15 @@
 >     toErlang (Port name ip) = ErlString name
 >     fromErlang = undefined
 >           
-> erlConnect           :: String -> Node -> IO (ErlSend, ErlRecv)
+> erlConnect :: String -> Node -> IO (ErlSend, ErlRecv)
 > erlConnect self node = withSocketsDo $ do
 >     port <- epmdGetPort node
 >     let port' = PortNumber . fromIntegral $ port
 >     withNode epmd port' $ \h -> do
->         let out = sendMessage packn (B.hPut h)
+>         let out = sendMessage packn (hPutBuilder h)
 >         let inf = recvMessage 2 (B.hGet h)
 >         handshake out inf self
->         let out' = sendMessage packN (\s -> B.hPut h s >> hFlush h)
+>         let out' = sendMessage packN (\s -> hPutBuilder h s >> hFlush h)
 >         let inf' = recvMessage 4 (B.hGet h)
 >         return (erlSend out', erlRecv inf')
 >     where epmd = case node of
@@ -141,7 +145,7 @@
 >                    Port  _ ip -> ip
 
                      
-> handshake :: (B.ByteString -> IO ()) -> IO B.ByteString -> String -> IO ()
+> handshake :: (Builder -> IO ()) -> IO B.ByteString -> String -> IO ()
 > handshake out inf self = do
 >     cookie <- getUserCookie
 >     sendName
@@ -153,10 +157,10 @@
 >     recvChallengeAck cookie challenge'
 
 >   where
->     sendName = out . runPut $ do
->         tag 'n'
->         putn erlangVersion
->         putN $ flagExtendedReferences .|. flagExtendedPidsPorts
+>     sendName = out $
+>         tag 'n' <>
+>         putn erlangVersion <>
+>         putN (flagExtendedReferences .|. flagExtendedPidsPorts) <>
 >         putA self
 
 >     recvStatus = do
@@ -172,9 +176,9 @@
 >             challenge <- getWord32be
 >             return challenge
 
->     challengeReply reply challenge = out . runPut $ do
->         tag 'r'
->         putWord32be challenge
+>     challengeReply reply challenge = out $
+>         tag 'r' <>
+>         word32BE challenge <>
 >         puta reply
 
 >     recvChallengeAck cookie challenge = do
@@ -203,8 +207,8 @@
 
 > epmdSend     :: String -> String -> IO B.ByteString
 > epmdSend epmd msg = withEpmd epmd $ \hdl -> do
->     let out = runPut $ putn (length msg) >> putA msg
->     B.hPut hdl out
+>     let out = putn (length msg) <> putA msg
+>     hPutBuilder hdl out
 >     hFlush hdl
 >     B.hGetContents hdl
 
@@ -227,11 +231,11 @@
 >                            Port  name ip -> (name, ip)
 
 > -- | Returns (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
-> epmdGetPortR4      :: String -> String -> IO (Int, Int, Int, Int, Int, String, String)
+> epmdGetPortR4 :: String -> String -> IO (Int, Int, Int, Int, Int, String, String)
 > epmdGetPortR4 epmd name = do
 >     reply <- epmdSend epmd $ 'z' : name
 >     return $ flip runGet reply $ do
->         getn
+>         _ <- getn
 >         port <- getn
 >         nodeType <- getC
 >         protocol <- getC
