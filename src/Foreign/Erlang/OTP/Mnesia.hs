@@ -1,3 +1,16 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Foreign.Erlang.OTP.Mnesia
+-- Copyright   : (c) Eric Sessoms, 2008
+--               (c) Artúr Poór, 2015
+-- License     : GPL3 (see COPYING)
+-- 
+-- Maintainer  : Eric Sessoms <nubgames@gmail.com>
+-- Stability   : alpha
+-- Portability : portable
+--
+-----------------------------------------------------------------------------
+
 module Foreign.Erlang.OTP.Mnesia (
   -- * Mnesia database methods.
     backup

@@ -1,6 +1,19 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# OPTIONS -XFlexibleInstances -XTypeSynonymInstances #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Foreign.Erlang.Types
+-- Copyright   : (c) Eric Sessoms, 2008
+--               (c) Artúr Poór, 2015
+-- License     : GPL3 (see COPYING)
+-- 
+-- Maintainer  : Eric Sessoms <nubgames@gmail.com>
+-- Stability   : alpha
+-- Portability : portable
+--
+-----------------------------------------------------------------------------
+
 module Foreign.Erlang.Types (
   -- * Native Erlang data types.
   -- ** Haskell representation.

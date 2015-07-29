@@ -1,7 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      : Foreign.Erlang
--- Copyright   : Eric Sessoms
+-- Copyright   : (c) Eric Sessoms, 2008
+--               (c) Artúr Poór, 2015
 -- License     : GPL3 (see COPYING)
 -- 
 -- Maintainer  : Eric Sessoms <nubgames@gmail.com>
