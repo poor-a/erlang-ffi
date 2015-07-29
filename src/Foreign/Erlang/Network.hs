@@ -31,7 +31,11 @@ import Data.Monoid ((<>),mempty)
 
 erlangVersion :: Int
 erlangVersion = 5
+
+erlangProtocolVersion :: Int
 erlangProtocolVersion = 131
+
+passThrough :: Char
 passThrough = 'p'
 
 flagPublished          =  0x01
@@ -45,8 +49,7 @@ flagNewFunTags         =  0x80
 flagExtendedPidsPorts  = 0x100
 
 flagExtendedReferences :: Word16
-flagExtendedPidsPorts :: Word16
-
+flagExtendedPidsPorts  :: Word16
 
 getUserCookie :: IO String
 getUserCookie = do
@@ -171,7 +174,7 @@ handshake out inf self = do
         msg <- inf
         return . flip runGet msg $ do
             _tag <- getC
-            _version <- getn
+            _version <- getn 
             _flags <- getN
             challenge <- getWord32be
             return challenge
@@ -224,8 +227,11 @@ epmdGetPort      :: Node -> IO Int
 epmdGetPort node = do
   reply <- epmdSend epmd $ 'z' : nodeName
   return $ flip runGet reply $ do
-                     _ <- getn
-                     getn
+                     _ <- getC
+                     res <- getC
+                     if res == 0
+                       then getn
+                       else error $ "epmdGetPort: node not found: " ++ show node
     where (nodeName, epmd) = case node of
                            Short name    -> (name, epmdLocal)
                            Port  name ip -> (name, ip)
