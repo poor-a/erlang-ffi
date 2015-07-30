@@ -137,12 +137,12 @@ type Name = String
 type Ip   = String
 
 -- | The name of an Erlang node on the network.     
-data Node = Short Name | Port Name Ip
+data Node = Short Name | Long Name Ip
                   deriving (Eq,Show)
 
 instance Erlang Node where
     toErlang (Short name)   = ErlString name
-    toErlang (Port name ip) = ErlString name
+    toErlang (Long name ip) = ErlString name
     fromErlang = undefined
           
 erlConnect :: String -> Node -> IO (ErlSend, ErlRecv)
@@ -158,7 +158,7 @@ erlConnect self node = withSocketsDo $ do
         return (erlSend out', erlRecv inf')
     where epmd = case node of
                    Short _    -> epmdLocal
-                   Port  _ ip -> ip
+                   Long  _ ip -> ip
 
                      
 handshake :: (Builder -> IO ()) -> IO B.ByteString -> String -> IO ()
@@ -247,7 +247,7 @@ epmdGetPort node = do
                        else error $ "epmdGetPort: node not found: " ++ show node
     where (nodeName, epmd) = case node of
                            Short name    -> (name, epmdLocal)
-                           Port  name ip -> (name, ip)
+                           Long  name ip -> (name, ip)
 
 -- | Returns (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
 epmdGetPortR4 :: String -> String -> IO (Int, Int, Int, Int, Int, String, String)
