@@ -37,7 +37,7 @@ import Data.Monoid ((<>),mconcat)
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.Char          (chr, ord, isLetter)
+import Data.Char          (chr, ord, isPrint)
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import Data.ByteString.Lazy.Builder
@@ -181,7 +181,7 @@ getErl = do
       'k' -> do
          len <- getn
          list <- getA len
-         case all isLetter list of
+         case all isPrint list of
            True -> return $ ErlString list
            False -> return . ErlList $ map (ErlInt . ord) list
       'l' -> do
