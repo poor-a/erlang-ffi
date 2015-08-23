@@ -138,7 +138,7 @@ type Ip   = String
 
 -- | The name of an Erlang node on the network.     
 data Node = Short Name | Long Name Ip
-                  deriving (Eq,Show)
+            deriving (Eq,Show)
 
 instance Erlang Node where
     toErlang (Short name)   = ErlString name
@@ -153,7 +153,7 @@ erlConnect self node = withSocketsDo $ do
         let out = sendMessage packn (hPutBuilder h)
         let inf = recvMessage 2 (B.hGet h)
         handshake out inf self
-        let out' = sendMessage packN (\s -> hPutBuilder h s >> hFlush h)
+        let out' = sendMessage packN (hPutBuilder h)
         let inf' = recvMessage 4 (B.hGet h)
         return (erlSend out', erlRecv inf')
     where epmd = case node of
@@ -210,15 +210,14 @@ epmdPort :: PortID
 --epmdPort = Service "epmd"
 epmdPort = PortNumber 4369
 
-
 withNode :: String -> PortID -> (Handle -> IO a) -> IO a
 withNode epmd port = withSocketsDo . bracketOnError
-    (connectTo epmd port >>= \h -> hSetBuffering h NoBuffering >> return h)
+    (connectTo epmd port)
     hClose
 
 withEpmd :: String -> (Handle -> IO a) -> IO a
 withEpmd epmd = withSocketsDo . bracketOnError
-    (connectTo epmd epmdPort >>= \h -> hSetBuffering h NoBuffering >> return h)
+    (connectTo epmd epmdPort)
     hClose
 
 epmdSend     :: String -> String -> IO B.ByteString

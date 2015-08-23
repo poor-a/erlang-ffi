@@ -31,12 +31,14 @@ module Foreign.Erlang.Types (
   , tag
   ) where
 
+import Prelude hiding (id)
+import qualified Prelude (id)
 import Control.Exception  (assert)
 import Control.Monad      (forM, liftM)
+--import Data.Int (Int64)
 import Data.Monoid ((<>),mconcat)
 import Data.Binary
 import Data.Binary.Get
-import Data.Binary.Put
 import Data.Char          (chr, ord, isPrint)
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C
@@ -64,8 +66,8 @@ class Erlang a where
     fromErlang :: ErlType -> a
 
 instance Erlang ErlType where
-    toErlang   = id
-    fromErlang = id
+    toErlang   = Prelude.id
+    fromErlang = Prelude.id
 
 instance Erlang Int where
     toErlang   x             = ErlInt x
@@ -152,7 +154,8 @@ putErl (ErlNewRef node creation id) =
     putErl node <>
     putC creation <>
     (lazyByteString . B.pack) id
-        
+
+getErl :: Get ErlType
 getErl = do
     tag <- liftM chr getC
     case tag of
@@ -216,12 +219,17 @@ puta = lazyByteString . B.pack
 putA :: String -> Builder       
 putA = lazyByteString . C.pack
 
+getC :: Get Int
 getC = liftM fromIntegral getWord8
 
-getn :: Num r => Get r
+getn :: Get Int
 getn = liftM fromIntegral getWord16be
 
-getN :: Num r => Get r
+getN :: Get Int
 getN = liftM fromIntegral getWord32be
-geta = liftM B.unpack . getLazyByteString
-getA = liftM C.unpack . getLazyByteString
+
+geta :: Int -> Get [Word8]
+geta = liftM B.unpack . getLazyByteString . fromIntegral
+
+getA :: Int -> Get String
+getA = liftM C.unpack . getLazyByteString . fromIntegral
