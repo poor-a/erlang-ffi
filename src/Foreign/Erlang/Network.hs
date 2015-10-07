@@ -1,15 +1,13 @@
------------------------------------------------------------------------------
 -- |
--- Module      : Foreign.Erlang.Network
+-- Module      : Foreign.Erlang.OTP
 -- Copyright   : (c) Eric Sessoms, 2008
 --               (c) Artúr Poór, 2015
--- License     : GPL3 (see COPYING)
+-- License     : GPL3
 -- 
--- Maintainer  : Eric Sessoms <nubgames@gmail.com>
--- Stability   : alpha
+-- Maintainer  : gombocarti@gmail.com
+-- Stability   : experimental
 -- Portability : portable
 --
------------------------------------------------------------------------------
 
 module Foreign.Erlang.Network (
   -- * Low-level communication with the Erlang Port-Mapper Daemon.
