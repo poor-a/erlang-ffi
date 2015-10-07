@@ -32,11 +32,11 @@ module Foreign.Erlang.Types (
   ) where
 
 import Prelude hiding (id)
-import qualified Prelude (id)
+import qualified Prelude  (id)
 import Control.Exception  (assert)
 import Control.Monad      (forM, liftM)
 --import Data.Int (Int64)
-import Data.Monoid ((<>),mconcat)
+import Data.Monoid        ((<>),mconcat)
 import Data.Binary
 import Data.Binary.Get
 import Data.Char          (chr, ord, isPrint)
@@ -202,7 +202,7 @@ getErl = do
       x -> error [x]
 
 tag :: Char -> Builder             
-tag = putC . ord
+tag = charUtf8
 
 putC :: Integral a => a -> Builder
 putC = word8 . fromIntegral
@@ -217,7 +217,7 @@ puta :: [Word8] -> Builder
 puta = lazyByteString . B.pack
 
 putA :: String -> Builder       
-putA = lazyByteString . C.pack
+putA = stringUtf8
 
 getC :: Get Int
 getC = liftM fromIntegral getWord8
