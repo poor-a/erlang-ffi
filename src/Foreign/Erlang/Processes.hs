@@ -10,19 +10,18 @@
 --
 
 module Foreign.Erlang.Processes (
-  -- * Low-level communication.
-  -- ** Represents a Haskell node (program).
+  -- * Low-level communication
+  -- ** Representation of a Haskell node (program)
     Self
   , createSelf
-  -- ** Represents a Haskell process (thread).
+  -- ** Representation of a Haskell process (thread)
   , MBox
   , createMBox
   , mboxRef
   , mboxSelf
-  -- ** Represents Erlang nodes and processes.
-  , Node(..)
+  -- ** Representation of Erlang nodes and processes
   , Pid
-  -- ** Communication to/from Erlang.
+  -- ** Communication to and from Erlang
   , mboxRecv
   , mboxRecv'
   , mboxSend
@@ -173,9 +172,10 @@ mboxSelf (MBox pid _ _) = pid
 mboxRef                        :: MBox -> IO ErlType
 mboxRef mbox@(MBox pid _ self) = send self (ErlGenRef pid) >> mboxRecv mbox
 
--- | Send an arbitrary message to the specified node and process.
+-- | Send an arbitrary message to the specified node and process. In Erlang equivalent to
+--
+-- > {Node, Pid} ! Msg.
 
--- | {Node, Pid} ! Msg.
 mboxSend :: Erlang a => MBox -> Node -> Pid -> a -> IO ()
 mboxSend (MBox _    _ self) node (Left  pid) msg = send self $ ErlSend node pid (toErlang msg)
 mboxSend (MBox from _ self) node (Right pid) msg = send self $ ErlRegSend from node pid (toErlang msg)

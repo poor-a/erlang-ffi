@@ -13,17 +13,14 @@
 --
 
 module Foreign.Erlang.Types (
-  -- * Native Erlang data types.
-  -- ** Haskell representation.
+  -- * Native Erlang data types
     ErlType(..)
-  -- ** Conversion between native Haskell types and ErlType.
-  , Erlang
-  , fromErlang
-  , toErlang
-  -- ** Easy type-safe access to tuple members.
+  -- ** Conversion between native Haskell types and ErlType
+  , Erlang(..)
+  -- ** Easy type-safe access to tuple members
   , nth
 
-  -- ** Internal packing functions.
+  -- ** Internal packing functions
   , getA, getC, getErl, getN, geta, getn
   , putA, putC, putErl, putN, puta, putn
   , tag

@@ -10,13 +10,16 @@
 --
 
 module Foreign.Erlang.Network (
-  -- * Low-level communication with the Erlang Port-Mapper Daemon.
+  -- * Low-level communication with the Erlang Port-Mapper Daemon
     epmdGetNames
   , epmdGetPort
   , epmdGetPortR4
   
   , ErlRecv
   , ErlSend
+  -- ** Representation of Erlang nodes
+  , Name
+  , Ip
   , Node(..)
   , erlConnect
   , toNetwork
@@ -131,12 +134,17 @@ erlRecv recv = do
       ver <- getC
       assert (ver == erlangProtocolVersion) $ getErl
 
+-- | Name of an Erlang node.
 type Name = String
+
+-- | Ip address of a remote Erlang node.
 type Ip   = String
 
--- | The name of an Erlang node on the network.     
-data Node = Short Name | Long Name Ip
-            deriving (Eq,Show)
+-- | Representation of an Erlang node on the network.     
+data Node 
+    = Short Name         -- ^ Local Erlang node.
+    | Long Name Ip       -- ^ Remote Erlang node.
+      deriving (Eq,Show)
 
 instance Erlang Node where
     toErlang (Short name)   = ErlString name
@@ -225,7 +233,7 @@ epmdSend epmd msg = withEpmd epmd $ \hdl -> do
     hFlush hdl
     B.hGetContents hdl
 
--- | Return the names and addresses of all registered Erlang nodes.
+-- | Return the names and addresses of registered local Erlang nodes.
 epmdGetNames :: IO [String]
 epmdGetNames = do
     reply <- epmdSend epmdLocal "n"

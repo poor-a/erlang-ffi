@@ -10,7 +10,7 @@
 --
 
 module Foreign.Erlang.Utilities (
-  -- * Miscellaneous utilities.
+  -- * Miscellaneous utilities
     erlangTimeToSeconds
   , secondsToErlangTime
   ) where

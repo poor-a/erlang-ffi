@@ -10,7 +10,7 @@
 --
 
 module Foreign.Erlang.OTP.Mnesia (
-  -- * Mnesia database methods.
+  -- * Mnesia database methods
     backup
   , dirtyAllKeys
   , dirtyFirst
@@ -23,8 +23,9 @@ module Foreign.Erlang.OTP.Mnesia (
   ) where
 
 import Foreign.Erlang.OTP.GenServer  (rpcCall)
-import Foreign.Erlang.Processes      (MBox, Node)
+import Foreign.Erlang.Processes      (MBox)
 import Foreign.Erlang.Types          (ErlType(..))
+import Foreign.Erlang.Network        (Node)
 
 mnesia                :: MBox -> Node -> String -> [ErlType] -> IO ErlType
 mnesia mbox node f as = rpcCall mbox node "mnesia" f as

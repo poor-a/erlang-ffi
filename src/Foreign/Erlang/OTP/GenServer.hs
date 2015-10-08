@@ -10,7 +10,7 @@
 --
 
 module Foreign.Erlang.OTP.GenServer (
-  -- * High-level communication.
+  -- * High-level communication
     genCall
   , genCast
   , rpcCall
@@ -19,6 +19,7 @@ module Foreign.Erlang.OTP.GenServer (
 
 import Foreign.Erlang.Types      (Erlang, ErlType(..))
 import Foreign.Erlang.Processes
+import Foreign.Erlang.Network    (Node)
 
 -- | gen_server:cast(Pid, Msg)
 
