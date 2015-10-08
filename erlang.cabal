@@ -1,5 +1,5 @@
 name:                erlang
-version:             0.1
+version:             0.2
 stability:           alpha
 description:
   Speaks the Erlang network protocol and impersonates an Erlang node
@@ -10,15 +10,18 @@ description:
 license:             GPL
 license-file:        COPYING
 author:              Eric Sessoms <nubgames@gmail.com>
-maintainer:          nubgames@gmail.com
-homepage:            http://github.com/esessoms/haskell-interface
+maintainer:          Artúr Poór <gombocarti@gmail.com>
+homepage:            http://github.com/gombocarti/erlang-ffi
 category:            Foreign
 synopsis:            FFI interface to Erlang.
-cabal-version:       >= 1.2
+cabal-version:       >= 1.6
 build-type:          Simple
+source-repository head
+  type:     git
+  location: https://github.com/gombocarti/erlang-ffi.git
 
 library
-  build-depends:     base,
+  build-depends:     base >= 4 && < 5,
                      binary >= 0.4.4,
                      bytestring,
                      directory,
