@@ -4,7 +4,7 @@ Speaks the Erlang network protocol and impersonates an Erlang node on the networ
 
 ## Short example
 
-We introduce the erlang library through a simple working example. We are going to write a simple ''Hello, Erlang!'' program.
+We introduce the `erlang` library through a simple working example. We are going to write a simple ''Hello, Erlang!'' program.
 
 Lets start with the Haskell code. Here we initialize the ffi with `createSelf`, and create a mailbox with `createMBox`. Then we send our greeting with our pid to a registered process `p` running on Erlang node `erl@127.0.0.1`. We expect an answer, so we get it from the mailbox and print it out to the standard output.
 
@@ -68,5 +68,5 @@ Received: Hello, Haskell!
 Taking a look at the Erlang shell, we see that the message is successfully delivered:
 
 ~~~~
-(erl@127.0.0.1)4> Received "Hello, Erlang!"
+(erl@127.0.0.1)3> Received "Hello, Erlang!"
 ~~~~
