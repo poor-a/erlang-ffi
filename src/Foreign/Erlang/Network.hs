@@ -19,7 +19,7 @@ module Foreign.Erlang.Network (
   , ErlSend
   -- ** Representation of Erlang nodes
   , Name
-  , Ip
+  , HostName
   , Node(..)
   , erlConnect
   , toNetwork
@@ -34,7 +34,7 @@ import Data.Hash.MD5            (md5i, Str(..))
 import Data.List                (unfoldr)
 import Data.Word
 import Foreign.Erlang.Types
-import Network                  (PortID(..), connectTo, withSocketsDo)
+import Network                  
 import System.Directory         (getHomeDirectory)
 import System.FilePath          ((</>))
 import System.IO
@@ -137,13 +137,10 @@ erlRecv recv = do
 -- | Name of an Erlang node.
 type Name = String
 
--- | Ip address of a remote Erlang node.
-type Ip   = String
-
 -- | Representation of an Erlang node on the network.     
 data Node 
     = Short Name         -- ^ Local Erlang node.
-    | Long Name Ip       -- ^ Remote Erlang node.
+    | Long Name HostName -- ^ Remote Erlang node.
       deriving (Eq,Show)
 
 instance Erlang Node where
@@ -209,7 +206,7 @@ handshake out inf self = do
         let reply = take 16 . tail . map (fromIntegral . ord) . B.unpack $ msg
         assert (digest == reply) $ return ()
 
-epmdLocal :: String
+epmdLocal :: HostName
 epmdLocal = "127.0.0.1"
             
 epmdPort :: PortID
