@@ -21,14 +21,15 @@ module Foreign.Erlang.Types (
   , nth
 
   -- ** Internal packing functions
-  , getA, getC, getErl, getN, geta, getn
+  , getA, getC, getErl, getN, geta, getn, getStrRem, getW8Rem
   , putA, putC, putErl, putN, puta, putn
-  , tag
+  , tag, getTag
   ) where
 
 import Prelude hiding (id)
 import qualified Prelude  (id)
 import Control.Exception  (assert)
+import Control.Applicative ((<$>))
 import Control.Monad      (forM, liftM)
 --import Data.Int (Int64)
 import Data.Monoid        ((<>),mconcat)
@@ -214,6 +215,9 @@ puta = lazyByteString . B.pack
 putA :: String -> Builder       
 putA = stringUtf8
 
+getTag :: Get Char
+getTag = liftM C.head (getLazyByteString 1)
+
 getC :: Get Int
 getC = liftM fromIntegral getWord8
 
@@ -226,5 +230,11 @@ getN = liftM fromIntegral getWord32be
 geta :: Int -> Get [Word8]
 geta = liftM B.unpack . getLazyByteString . fromIntegral
 
+getW8Rem :: Get [Word8]
+getW8Rem = B.unpack <$> getRemainingLazyByteString
+
 getA :: Int -> Get String
 getA = liftM C.unpack . getLazyByteString . fromIntegral
+
+getStrRem :: Get String
+getStrRem = liftM C.unpack getRemainingLazyByteString

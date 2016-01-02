@@ -14,6 +14,7 @@ module Foreign.Erlang.Network (
     epmdGetNames
   , epmdGetPort
   , epmdGetPortR4
+  , register
   
   , ErlRecv
   , ErlSend
@@ -21,27 +22,31 @@ module Foreign.Erlang.Network (
   , Name
   , Ip
   , Node(..)
+  , erlAcceptConn
   , erlConnect
   , toNetwork
   ) where
 
 import Control.Exception        (assert, bracketOnError)
-import Control.Monad            (liftM)
+import Control.Monad            (liftM, when)
+import Control.Applicative      ((<$>))
 import Data.Binary.Get
 import Data.Bits                ((.|.))
 import Data.Char                (chr, ord)
 import Data.Hash.MD5            (md5i, Str(..))
 import Data.List                (unfoldr)
 import Data.Word
-import Foreign.Erlang.Types
-import Network                  (PortID(..), connectTo, withSocketsDo)
+import Network                  
 import System.Directory         (getHomeDirectory)
 import System.FilePath          ((</>))
 import System.IO
+import System.IO.Error          (ioError, userError)
 import System.Random            (randomIO)
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.ByteString.Lazy.Builder
 import Data.Monoid ((<>),mempty)
+
+import Foreign.Erlang.Types
 
 erlangVersion :: Int
 erlangVersion = 5
@@ -65,6 +70,18 @@ flagExtendedPidsPorts  = 0x100
 flagExtendedReferences :: Word16
 flagExtendedPidsPorts  :: Word16
 
+flagSupportedCapability :: Word16
+flagSupportedCapability = flagExtendedReferences .|. flagExtendedPidsPorts
+                          
+protocol :: Int
+protocol = 0
+
+highestVersion :: Int
+highestVersion = 5
+
+lowestVersion :: Int
+lowestVersion = 5
+
 getUserCookie :: IO String
 getUserCookie = do
     home <- getHomeDirectory
@@ -76,7 +93,7 @@ toNetwork b n = reverse . take b $ unfoldr toNetwork' n ++ repeat 0
     toNetwork' 0 = Nothing
     toNetwork' n = let (b, a) = n `divMod` 256 in Just (fromIntegral a, b)
 
-erlDigest                  :: String -> Word32 -> [Word8]
+erlDigest :: String -> Word32 -> [Word8]
 erlDigest cookie challenge = let
     n = fromIntegral . md5i . Str $ cookie ++ show challenge
     in toNetwork 16 n
@@ -150,7 +167,65 @@ instance Erlang Node where
     toErlang (Short name)   = ErlString name
     toErlang (Long name ip) = ErlString name
     fromErlang = undefined
-          
+
+erlAcceptConn :: String -> Handle -> IO (Maybe (ErlSend, ErlRecv))
+erlAcceptConn self h = do
+  let put = sendMessage packn (hPutBuilder h)
+      get = recvMessage 2 (B.hGet h)
+  result <- handshakeAccept put get self
+  case result of
+    Just name -> do
+      let put' = sendMessage packN (hPutBuilder h)
+          get' = recvMessage 4 (B.hGet h)
+      return . Just $ (erlSend put', erlRecv get')
+    Nothing -> return Nothing
+
+handshakeAccept :: (Builder -> IO ()) -> IO B.ByteString -> String -> IO (Maybe String)
+handshakeAccept put get self = do
+  name <- recvName
+  sendStatus
+  myChallenge <- randomIO :: IO Int
+  cookie <- getUserCookie
+  let myDigest = erlDigest cookie (fromIntegral myChallenge)
+  sendChallenge myChallenge
+  (challenge, digest) <- recvChallengeReply
+  if digest == myDigest
+    then do
+      sendChallengeAck cookie (fromIntegral challenge)
+      return . Just $ name
+    else 
+        return Nothing
+    where
+      recvName = do
+        msg <- get
+        return $ flip runGet msg $ do
+          _t <- getTag
+          _version <- getn
+          _flags <- getN
+          name <- getStrRem
+          return name
+
+      sendStatus = put $ tag 's' <> putA "ok"
+
+      sendChallenge challenge = do
+        put $ tag 'n' <>
+              putn erlangVersion <>
+              putN flagSupportedCapability <>
+              putN challenge <>
+              putA self
+
+      recvChallengeReply = do
+        reply <- get
+        return $ flip runGet reply $ do
+          _t <- getTag
+          challenge <- getN
+          digest <- getW8Rem
+          return (challenge,digest)
+
+      sendChallengeAck cookie challenge = put $
+        tag 'a' <>
+        puta (erlDigest cookie challenge)
+         
 erlConnect :: String -> Node -> IO (ErlSend, ErlRecv)
 erlConnect self node = withSocketsDo $ do
     port <- epmdGetPort node
@@ -182,7 +257,7 @@ handshake out inf self = do
     sendName = out $
         tag 'n' <>
         putn erlangVersion <>
-        putN (flagExtendedReferences .|. flagExtendedPidsPorts) <>
+        putN flagSupportedCapability <>
         putA self
 
     recvStatus = do
@@ -209,7 +284,7 @@ handshake out inf self = do
         let reply = take 16 . tail . map (fromIntegral . ord) . B.unpack $ msg
         assert (digest == reply) $ return ()
 
-epmdLocal :: String
+epmdLocal :: HostName
 epmdLocal = "127.0.0.1"
             
 epmdPort :: PortID
@@ -221,12 +296,38 @@ withNode epmd port = withSocketsDo . bracketOnError
     (connectTo epmd port)
     hClose
 
+register :: String -> Int -> IO Handle
+register name port = do
+  h <- connectTo epmdLocal epmdPort
+  sendMessage packn (hPutBuilder h) alive2Req
+  reply <- B.hGetContents h
+  let result_ = flip runGet reply $ do
+                  _tag <- getC
+                  result <- getC
+                  _creation <- getn
+                  return result
+  if result_ == 0
+    then return h
+    else ioError (userError $ "epmd returned error code " ++ show result_)
+          where
+      alive2Req = tag 'x' <>
+                  putn port <>
+                  putn protocol <>
+                  putn highestVersion <>
+                  putn lowestVersion <>
+                  (putn . length) name <>
+                  putA name <>
+                  putn extraBytes
+
+      extraBytes :: Int
+      extraBytes = 0
+
 withEpmd :: String -> (Handle -> IO a) -> IO a
 withEpmd epmd = withSocketsDo . bracketOnError
     (connectTo epmd epmdPort)
     hClose
 
-epmdSend     :: String -> String -> IO B.ByteString
+epmdSend :: String -> String -> IO B.ByteString
 epmdSend epmd msg = withEpmd epmd $ \hdl -> do
     let out = putn (length msg) <> putA msg
     hPutBuilder hdl out
@@ -241,7 +342,7 @@ epmdGetNames = do
     return . lines $ txt
 
 -- | Return the port address of a named Erlang node.
-epmdGetPort      :: Node -> IO Int
+epmdGetPort :: Node -> IO Int
 epmdGetPort node = do
   reply <- epmdSend epmd $ 'z' : nodeName
   return $ flip runGet reply $ do
@@ -262,9 +363,9 @@ epmdGetPortR4 epmd name = do
         _ <- getn
         port <- getn
         nodeType <- getC
-        protocol <- getC
+        protocol_ <- getC
         vsnMax <- getn
         vsnMin <- getn
-        name <- getn >>= getA
+        name_ <- getn >>= getA
         extra <- liftM B.unpack getRemainingLazyByteString
-        return (port, nodeType, protocol, vsnMax, vsnMin, name, extra)
+        return (port, nodeType, protocol_, vsnMax, vsnMin, name_, extra)
