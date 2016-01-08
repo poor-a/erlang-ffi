@@ -27,13 +27,18 @@ module Foreign.Erlang.Processes (
   , mboxSend
   ) where
 
+import Prelude hiding (id)
 import Control.Concurrent  (forkIO)
 import Control.Concurrent.MVar
 import Data.Maybe          (fromJust)
+import System.IO (hClose)
+import Network                  
+
 import Foreign.Erlang.Network
 import Foreign.Erlang.Types
 
 data ErlMessage = ErlRegister (ErlType -> IO ())
+                | ErlAcceptNode Node ErlSend ErlRecv
                 | ErlGenRef ErlType
                 | ErlSend Node ErlType ErlType
                 | ErlRegSend ErlType Node String ErlType
@@ -43,90 +48,111 @@ data ErlMessage = ErlRegister (ErlType -> IO ())
                 | ErlExit2 ErlType Node ErlType ErlType
                 | ErlDispatch ErlType ErlType
                 | ErlStop
-                deriving Show
-
-instance Show (a -> b) where
-    show _ = "<function>"
 
 -- | Represents a Haskell node.  There should be one of these per process.
 data Self = Self { send :: ErlMessage -> IO () }
 
+genPid :: String -> Int -> ErlType
 genPid nodename id = ErlPid (ErlAtom nodename) id 0 1
+
+genRef :: String -> Int -> ErlType
 genRef nodename id = ErlNewRef (ErlAtom nodename) 1 . toNetwork 4 . fromIntegral $ id
 
 -- | Instantiate a Haskell node.  This initializes the FFI.
-createSelf          :: String -> IO Self
-createSelf nodename = do
-    inbox <- newEmptyMVar
-    forkIO $ self nodename inbox
-    return . Self $ putMVar inbox
+createSelf :: String -> Int -> IO Self
+createSelf nodename port = do
+  inbox <- newEmptyMVar
+  _ <- forkIO $ self nodename port inbox
+  return . Self $ putMVar inbox
 
-self                :: String -> MVar ErlMessage -> IO ()
-self nodename inbox = loop 1 [] []
+self :: String -> Int -> MVar ErlMessage -> IO ()
+self fullname port inbox = do
+  _ <- forkIO $ listen fullname port (Self $ putMVar inbox)
+  let nodename = takeWhile (/= '@') fullname
+  epdm <- register nodename port
+  loop 1 [] [] epdm
   where
-    loop id mboxes nodes = do
+    loop id mboxes nodes epmd = do
         msg <- takeMVar inbox
         case msg of
           ErlRegister mbox -> do
-            let pid = genPid nodename id
+            let pid = genPid fullname id
             mbox pid
-            loop (id+1) ((pid, mbox) : mboxes) nodes
+            loop (id+1) ((pid, mbox) : mboxes) nodes epmd
+          ErlAcceptNode node send recv -> do
+            outbox <- newEmptyMVar
+            _ <- forkIO $ nodeSend outbox send
+            _ <- forkIO $ nodeRecv outbox recv inbox
+            let deliver = putMVar outbox
+            loop id mboxes ((node,deliver):nodes) epmd
           ErlGenRef pid -> do
-            let ref = genRef nodename id
+            let ref = genRef fullname id
             maybe (return ()) ($ ref) $ lookup pid mboxes
-            loop (id+1) mboxes nodes
+            loop (id+1) mboxes nodes epmd
           ErlSend node pid msg -> do
             let ctl = toErlang (ErlInt 2, ErlAtom "", pid)
             (mnode, nodes') <- findNode node nodes
             case mnode of
               Just n  -> n (Just ctl, Just msg)
               Nothing -> return ()
-            loop id mboxes nodes'
+            loop id mboxes nodes' epmd
           ErlRegSend from node pid msg -> do
             let ctl = toErlang (ErlInt 6, from, ErlAtom "", ErlAtom pid)
             (mnode, nodes') <- findNode node nodes
             case mnode of
               Just n  -> n (Just ctl, Just msg)
               Nothing -> return ()
-            loop id mboxes nodes'
+            loop id mboxes nodes' epmd
           ErlLink from to pid -> do
               let ctl = toErlang (ErlInt 1, from, pid)
               (node, nodes') <- findNode to nodes
               fromJust node (Just ctl, Nothing)
-              loop id mboxes nodes'
+              loop id mboxes nodes' epmd
           ErlUnlink from to pid -> do
               let ctl = toErlang (ErlInt 4, from, pid)
               (node, nodes') <- findNode to nodes
               fromJust node (Just ctl, Nothing)
-              loop id mboxes nodes'
+              loop id mboxes nodes' epmd
           ErlExit from to pid reason -> do
               let ctl = toErlang (ErlInt 3, from, to, reason)
               (node, nodes') <- findNode to nodes
               fromJust node (Just ctl, Nothing)
-              loop id mboxes nodes'
+              loop id mboxes nodes' epmd
           ErlExit2 from to pid reason -> do
               let ctl = toErlang (ErlInt 8, from, to, reason)
               (node, nodes') <- findNode to nodes
               fromJust node (Just ctl, Nothing)
-              loop id mboxes nodes'
+              loop id mboxes nodes' epmd
           ErlDispatch ctl msg -> do
             case ctl of
               ErlTuple [ErlInt 2, _, pid] ->
                 maybe (return ()) ($ msg) $ lookup pid mboxes
               _ -> return ()
-            loop id mboxes nodes
-          ErlStop -> return ()
+            loop id mboxes nodes epmd
+          ErlStop -> hClose epmd
 
     findNode to nodes =
         case lookup to nodes of
           Just node -> return (Just node, nodes)
           Nothing   -> do
-            (send, recv) <- erlConnect nodename to
+            (send, recv) <- erlConnect fullname to
             mvar <- newEmptyMVar
-            forkIO $ nodeSend mvar send
-            forkIO $ nodeRecv mvar recv inbox
+            _ <- forkIO $ nodeSend mvar send
+            _ <- forkIO $ nodeRecv mvar recv inbox
             let node = putMVar mvar
             return (Just node, ((to, node) : nodes))
+
+listen :: String -> Int -> Self -> IO ()
+listen selfName port self = do
+  socket <- listenOn (PortNumber . fromIntegral $ port)
+  loop socket
+       where
+         loop socket = do
+           (h,_,_) <- accept socket
+           _ <- forkIO $ do
+             result <- erlAcceptConn selfName h
+             maybe (return ()) (\(node,sendnode,recvnode) -> send self $ ErlAcceptNode node sendnode recvnode) result
+           loop socket
 
 -- | A `nodeSend` thread is responsible for communication to an Erlang
 -- process.  It receives messages in an `MVar` and forwards them across
