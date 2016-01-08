@@ -36,6 +36,7 @@ import Data.Char                (chr, ord)
 import Data.Hash.MD5            (md5i, Str(..))
 import Data.List                (unfoldr)
 import Data.Word
+import Data.String              (IsString(..))
 import Network                  
 import System.Directory         (getHomeDirectory)
 import System.FilePath          ((</>))
@@ -168,21 +169,28 @@ instance Erlang Node where
     toErlang (Long name ip) = ErlString name
     fromErlang = undefined
 
-erlAcceptConn :: String -> Handle -> IO (Maybe (ErlSend, ErlRecv))
+instance IsString Node where
+    fromString s = case hostname of
+                     '@':host -> Long nodename host
+                     _ -> Short nodename
+        where
+          (nodename,hostname) = break (== '@') s
+
+erlAcceptConn :: String -> Handle -> IO (Maybe (Node, ErlSend, ErlRecv))
 erlAcceptConn self h = do
   let put = sendMessage packn (hPutBuilder h)
       get = recvMessage 2 (B.hGet h)
   result <- handshakeAccept put get self
   case result of
-    Just name -> do
+    Just node -> do
       let put' = sendMessage packN (hPutBuilder h)
           get' = recvMessage 4 (B.hGet h)
-      return . Just $ (erlSend put', erlRecv get')
+      return . Just $ (node, erlSend put', erlRecv get')
     Nothing -> return Nothing
 
-handshakeAccept :: (Builder -> IO ()) -> IO B.ByteString -> String -> IO (Maybe String)
+handshakeAccept :: (Builder -> IO ()) -> IO B.ByteString -> String -> IO (Maybe Node)
 handshakeAccept put get self = do
-  name <- recvName
+  fullName <- recvName
   sendStatus
   myChallenge <- randomIO :: IO Int
   cookie <- getUserCookie
@@ -192,7 +200,7 @@ handshakeAccept put get self = do
   if digest == myDigest
     then do
       sendChallengeAck cookie (fromIntegral challenge)
-      return . Just $ name
+      return . Just . fromString $ fullName
     else 
         return Nothing
     where
