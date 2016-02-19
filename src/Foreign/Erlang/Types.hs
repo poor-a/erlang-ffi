@@ -39,6 +39,12 @@ import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import Data.ByteString.Lazy.Builder
 
+import qualified Data.ByteString            as Byte
+import Data.ByteString (ByteString)
+import Control.Applicative
+import Data.Bits(shiftL,complement,(.|.))
+
+
 nth                  :: Erlang a => Int -> ErlType -> a
 nth i (ErlTuple lst) = fromErlang $ lst !! i
 
@@ -65,7 +71,10 @@ instance Erlang ErlType where
     fromErlang = Prelude.id
 
 instance Erlang Int where
-    toErlang   x             = ErlInt x
+    toErlang   x             
+       | abs x <= 0x7FFFFFFF = ErlInt x        
+       | otherwise           = ErlBigInt (fromIntegral x) -- Haskell Int (might) use 64 bits whether erlang's small Int use only 32 bit
+
     fromErlang (ErlInt x)    = x
     fromErlang (ErlBigInt x) = fromIntegral x
 
@@ -136,6 +145,15 @@ putErl (ErlString val)      = tag 'k' <> putn (length val) <> putA val
 putErl (ErlList val)        = tag 'l' <> putN (length val) <> val' <> putErl ErlNull
     where val' = mconcat . map putErl $ val  
 putErl (ErlBinary val)      = tag 'm' <> putN (length val) <> (lazyByteString . B.pack) val
+
+putErl (ErlBigInt x) 
+       | len > 255      = tag 'o' <> putN len <> byteString val 
+       | otherwise      = tag 'n' <> putC len <> byteString val 
+   where
+     val = integerToBytes x
+     len = Byte.length val -1
+
+
 putErl (ErlRef node id creation) =
     tag 'e' <>
     putErl node <>
@@ -154,8 +172,17 @@ getErl :: Get ErlType
 getErl = do
     tag <- liftM chr getC
     case tag of
+
       'a' -> liftM ErlInt getC
-      'b' -> liftM ErlInt getN
+
+      'b' -> do x <- getN
+                
+                let valFrom32  
+                      | x > 0x7FFFFFFF = x .|. complement 0xFFFFFFFF  
+                      | otherwise      = x
+
+                return (ErlInt valFrom32)
+
       'd' -> getn >>= liftM ErlAtom . getA
       'e' -> do
         node <- getErl
@@ -188,13 +215,47 @@ getErl = do
         null <- getErl
         assert (null == ErlNull) $ return list
       'm' -> getN >>= liftM ErlBinary . geta
+
+      'n' -> do  len <- getC
+                 raw <- getByteString (len+1)
+                 ErlBigInt <$> bytesToInteger raw
+      
+      'o' -> do  len <- getN
+                 raw <- getByteString (len+1)
+                 ErlBigInt <$> bytesToInteger raw
+
       'r' -> do
         len <- getn
         node <- getErl
         creation <- getC
         id <- forM [1..4*len] (const getWord8)
         return $ ErlNewRef node creation id
-      x -> error [x]
+
+      x -> fail $ "Unsupported serialization code: " ++ show (ord x)
+
+
+bytesToInteger :: ByteString -> Get Integer
+bytesToInteger bts = case Byte.unpack bts of
+                      0 : bts' -> return $          foldr step 0 bts'
+                      1 : bts' -> return . negate $ foldr step 0 bts'
+                      x : _    -> fail $ "Unexpected sign byte: " ++ show x
+                      _        -> fail $ "Unexpected end of input at function 'bytesToInteger'"
+  where
+    step next acc = shiftL acc 8 + fromIntegral next
+
+
+integerToBytes :: Integer -> ByteString
+integerToBytes int = Byte.pack 
+                   . fmap (fromIntegral.snd) 
+                   . takeWhile not_zero 
+                   $ iterate ((`divMod`256).fst) (abs int,sigByte)
+  
+  where
+    not_zero (a,b)    = a + b /= 0
+    sigByte | int > 0   = 0
+            | otherwise = 1
+
+
 
 tag :: Char -> Builder             
 tag = charUtf8
