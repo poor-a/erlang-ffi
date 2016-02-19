@@ -55,6 +55,7 @@ genPid nodename id = ErlPid (ErlAtom nodename) id 0 1
 genRef nodename id = ErlNewRef (ErlAtom nodename) 1 . toNetwork 4 . fromIntegral $ id
 
 -- | Instantiate a Haskell node.  This initializes the FFI.
+-- Node name should be a \'long name\' e.g. @\"haskell\@localhost\"@.
 createSelf          :: String -> IO Self
 createSelf nodename = do
     inbox <- newEmptyMVar
@@ -172,7 +173,7 @@ mboxSelf (MBox pid _ _) = pid
 mboxRef                        :: MBox -> IO ErlType
 mboxRef mbox@(MBox pid _ self) = send self (ErlGenRef pid) >> mboxRecv mbox
 
--- | Send an arbitrary message to the specified node and process. In Erlang equivalent to
+-- | Send an arbitrary message to the specified node and process. It is equivalent in Erlang to
 --
 -- > {Node, Pid} ! Msg.
 

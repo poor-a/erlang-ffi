@@ -23,13 +23,9 @@ module Foreign.Erlang (
   , module Foreign.Erlang.Utilities
   ) where
 
-import Foreign.Erlang.Network hiding (toNetwork)
+import Foreign.Erlang.Network hiding (toNetwork, erlConnect)
 import Foreign.Erlang.OTP
 import Foreign.Erlang.Processes
 import Foreign.Erlang.Utilities
     
-import Foreign.Erlang.Types hiding (
-    getA, getC, getErl, getN, geta, getn
-  , putA, putC, putErl, putN, puta, putn
-  , tag
-  )
+import Foreign.Erlang.Types (Erlang(..), ErlType(..), nth)
