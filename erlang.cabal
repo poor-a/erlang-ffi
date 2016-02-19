@@ -1,5 +1,5 @@
 name:                erlang
-version:             0.2
+version:             0.2.1
 stability:           alpha
 description:
   Speaks the Erlang network protocol and impersonates an Erlang node
