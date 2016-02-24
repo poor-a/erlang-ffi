@@ -37,9 +37,11 @@ import Data.Binary.Get
 import Data.Char          (chr, ord, isPrint)
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C
+import qualified Data.ByteString.Char8      as BB
 import Data.ByteString.Lazy.Builder
 
 import qualified Data.ByteString            as Byte
+import qualified Data.ByteString.Base16     as Hex
 import Data.ByteString (ByteString)
 import Control.Applicative
 import Data.Bits(shiftL,complement,(.|.))
@@ -50,6 +52,7 @@ nth i (ErlTuple lst) = fromErlang $ lst !! i
 
 data ErlType = ErlNull
              | ErlInt Int
+             | ErlFloat  Double
              | ErlBigInt Integer
              | ErlString String
              | ErlAtom String
@@ -77,6 +80,10 @@ instance Erlang Int where
 
     fromErlang (ErlInt x)    = x
     fromErlang (ErlBigInt x) = fromIntegral x
+
+instance Erlang Double where
+  toErlang   x                 = ErlFloat x 
+  fromErlang (ErlFloat x)      = x
 
 instance Erlang Integer where
     toErlang   x             = ErlBigInt x
@@ -134,6 +141,8 @@ putErl :: ErlType -> Builder
 putErl (ErlInt val)
     | 0 <= val && val < 256 = tag 'a' <> putC val
     | otherwise             = tag 'b' <> putN val
+
+putErl (ErlFloat val)       = tag 'c' <> byteString  (BB.pack . take 31 $ show val ++ repeat '\NUL')
 putErl (ErlAtom val)        = tag 'd' <> putn (length val) <> putA val
 putErl (ErlTuple val)
     | len < 256             = tag 'h' <> putC len <> val'
@@ -182,6 +191,11 @@ getErl = do
                       | otherwise      = x
 
                 return (ErlInt valFrom32)
+      'c' -> do parsed  <- reads . BB.unpack <$> getByteString 31  
+                case parsed of
+                  [(x,remains)]
+                    | all (=='\NUL') remains -> return $ ErlFloat x 
+                  _                          -> fail $ "could not parse float representation: "++show parsed
 
       'd' -> getn >>= liftM ErlAtom . getA
       'e' -> do
