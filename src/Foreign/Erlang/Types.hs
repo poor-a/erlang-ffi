@@ -41,7 +41,6 @@ import qualified Data.ByteString.Char8      as BB
 import Data.ByteString.Lazy.Builder
 
 import qualified Data.ByteString            as Byte
-import qualified Data.ByteString.Base16     as Hex
 import Data.ByteString (ByteString)
 import Control.Applicative
 import Data.Bits(shiftL,complement,(.|.))
