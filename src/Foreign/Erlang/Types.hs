@@ -81,8 +81,12 @@ instance Erlang Int where
     fromErlang (ErlBigInt x) = fromIntegral x
 
 instance Erlang Double where
-  toErlang   x                 = ErlFloat x 
-  fromErlang (ErlFloat x)      = x
+    toErlang   x            = ErlFloat x 
+    fromErlang (ErlFloat x) = x
+
+instance Erlang Float where
+    toErlang x              = ErlFloat (realToFrac x)
+    fromErlang (ErlFloat x) = realToFrac x
 
 instance Erlang Integer where
     toErlang   x             = ErlBigInt x
