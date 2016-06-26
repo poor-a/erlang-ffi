@@ -21,7 +21,7 @@ import Foreign.Erlang.Types  (ErlType(..))
 -- MicroSeconds}.  Luckily though, Erlang uses the same epoch, so no
 -- further conversion is necessary.
 
--- | Convert a tuple (from erlang:now()) to seconds from Jan 1, 1970.
+-- | Convert a tuple (from @erlang:now()@) to seconds from Jan 1, 1970.
 
 erlangTimeToSeconds :: Integral a => ErlType -> a
 erlangTimeToSeconds (ErlTuple [ErlInt ms, ErlInt s, _]) =

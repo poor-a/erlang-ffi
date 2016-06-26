@@ -41,7 +41,7 @@ f() ->
 Lets start up the engines! We are ready to compile and run our programs.
 
 ~~~~
-$ ghc Hello.erl
+$ ghc Hello.hs
 [1 of 1] Compiling Main             ( Hello.hs, Hello.o )
 Linking Hello ...
 $ erlc hello.erl

@@ -20,7 +20,7 @@ module Foreign.Erlang.Network (
   , ErlSend
   -- ** Representation of Erlang nodes
   , Name
-  , Ip
+  , HostName
   , Node(..)
   , erlAcceptConn
   , erlConnect
@@ -153,13 +153,10 @@ erlRecv recv = do
 -- | Name of an Erlang node.
 type Name = String
 
--- | Ip address of a remote Erlang node.
-type Ip   = String
-
 -- | Representation of an Erlang node on the network.     
 data Node 
     = Short Name         -- ^ Local Erlang node.
-    | Long Name Ip       -- ^ Remote Erlang node.
+    | Long Name HostName -- ^ Remote Erlang node.
       deriving (Eq,Show)
 
 instance Erlang Node where
