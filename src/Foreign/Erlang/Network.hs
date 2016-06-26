@@ -14,7 +14,7 @@ module Foreign.Erlang.Network (
     epmdGetNames
   , epmdGetPort
   , epmdGetPortR4
-  , register
+  , epmdRegister
   
   , ErlRecv
   , ErlSend
@@ -28,8 +28,7 @@ module Foreign.Erlang.Network (
   ) where
 
 import Control.Exception        (assert, bracketOnError)
-import Control.Monad            (liftM, when)
-import Control.Applicative      ((<$>))
+import Control.Monad            (liftM)
 import Data.Binary.Get
 import Data.Bits                ((.|.))
 import Data.Char                (chr, ord)
@@ -41,7 +40,6 @@ import Network
 import System.Directory         (getHomeDirectory)
 import System.FilePath          ((</>))
 import System.IO
-import System.IO.Error          (ioError, userError)
 import System.Random            (randomIO)
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.ByteString.Lazy.Builder
@@ -166,7 +164,7 @@ data Node
 
 instance Erlang Node where
     toErlang (Short name)   = ErlString name
-    toErlang (Long name ip) = ErlString name
+    toErlang (Long name _ip) = ErlString name
     fromErlang = undefined
 
 instance IsString Node where
@@ -304,8 +302,8 @@ withNode epmd port = withSocketsDo . bracketOnError
     (connectTo epmd port)
     hClose
 
-register :: String -> Int -> IO Handle
-register name port = do
+epmdRegister :: String -> Int -> IO Handle
+epmdRegister name port = do
   h <- connectTo epmdLocal epmdPort
   sendMessage packn (hPutBuilder h) alive2Req
   reply <- B.hGetContents h
@@ -317,18 +315,18 @@ register name port = do
   if result_ == 0
     then return h
     else ioError (userError $ "epmd returned error code " ++ show result_)
-          where
-      alive2Req = tag 'x' <>
-                  putn port <>
-                  putn protocol <>
-                  putn highestVersion <>
-                  putn lowestVersion <>
-                  (putn . length) name <>
-                  putA name <>
-                  putn extraBytes
+      where
+        alive2Req = tag 'x' <>
+                    putn port <>
+                    putn protocol <>
+                    putn highestVersion <>
+                    putn lowestVersion <>
+                    (putn . length) name <>
+                    putA name <>
+                    putn extraBytes
 
-      extraBytes :: Int
-      extraBytes = 0
+        extraBytes :: Int
+        extraBytes = 0
 
 withEpmd :: String -> (Handle -> IO a) -> IO a
 withEpmd epmd = withSocketsDo . bracketOnError
