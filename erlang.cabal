@@ -38,3 +38,5 @@ library
                      Foreign.Erlang.Types,
                      Foreign.Erlang.Utilities
   hs-source-dirs:    src
+  ghc-options:       -Wall
+
