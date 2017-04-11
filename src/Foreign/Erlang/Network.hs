@@ -1,5 +1,5 @@
 -- |
--- Module      : Foreign.Erlang.OTP
+-- Module      : Foreign.Erlang.Network
 -- Copyright   : (c) Eric Sessoms, 2008
 --               (c) Artúr Poór, 2015
 -- License     : GPL3
@@ -68,7 +68,11 @@ flagExtendedPidsPorts  :: Word16
 getUserCookie :: IO String
 getUserCookie = do
     home <- getHomeDirectory
-    readFile $ home </> ".erlang.cookie"
+    withFile (home </> ".erlang.cookie") ReadMode $ \h -> do
+      eof <- hIsEOF h
+      if eof
+        then return ""
+        else hGetLine h
 
 toNetwork :: Int -> Integer -> [Word8]
 toNetwork b n = reverse . take b $ unfoldr toNetwork' n ++ repeat 0
