@@ -1,5 +1,5 @@
 name:                erlang
-version:             0.2.2
+version:             0.2.3
 stability:           alpha
 description:
   Speaks the Erlang network protocol and impersonates an Erlang node
@@ -16,6 +16,8 @@ category:            Foreign
 synopsis:            FFI interface to Erlang.
 cabal-version:       >= 1.6
 build-type:          Simple
+extra-source-files:
+  CHANGELOG
 source-repository head
   type:     git
   location: https://github.com/gombocarti/erlang-ffi.git
