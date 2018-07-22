@@ -248,6 +248,10 @@ getErl = do
         id <- forM [1..4*len] (const getWord8)
         return $ ErlNewRef node creation id
 
+      'v' -> getn >>= liftM ErlAtom . getA
+
+      'w' -> getC >>= liftM ErlAtom . getA
+
       x -> fail $ "Unsupported serialization code: " ++ show (ord x)
 
 

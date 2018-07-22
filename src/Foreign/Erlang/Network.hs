@@ -61,9 +61,11 @@ flagDistMonitorName    =  0x20
 flagHiddenAtomCache    =  0x40
 flagNewFunTags         =  0x80
 flagExtendedPidsPorts  = 0x100
+flagUTF8Atoms          = 0x10000
 
-flagExtendedReferences :: Word16
-flagExtendedPidsPorts  :: Word16
+flagExtendedReferences :: Word32
+flagExtendedPidsPorts  :: Word32
+flagUTF8Atoms          :: Word32
 
 getUserCookie :: IO String
 getUserCookie = do
@@ -183,7 +185,7 @@ handshake out inf self = do
     sendName = out $
         tag 'n' <>
         putn erlangVersion <>
-        putN (flagExtendedReferences .|. flagExtendedPidsPorts) <>
+        putN (flagExtendedReferences .|. flagExtendedPidsPorts .|. flagUTF8Atoms) <>
         putA self
 
     recvStatus = do
