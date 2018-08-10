@@ -152,7 +152,7 @@ data Node
 instance Erlang Node where
     toErlang (Short name)   = ErlString name
     toErlang (Long name ip) = ErlString name
-    fromErlang = undefined
+    fromErlangMay           = error "parsing of Node's not supported"  -- TODO
           
 erlConnect :: String -> Node -> IO (ErlSend, ErlRecv)
 erlConnect self node = withSocketsDo $ do

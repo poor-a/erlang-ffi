@@ -1,5 +1,13 @@
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DefaultSignatures    #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverlappingInstances #-}
-{-# OPTIONS -XFlexibleInstances -XTypeSynonymInstances #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+
 
 -- |
 -- Module      : Foreign.Erlang.OTP
@@ -26,24 +34,28 @@ module Foreign.Erlang.Types (
   , tag
   ) where
 
-import Prelude hiding (id)
-import qualified Prelude  (id)
-import Control.Exception  (assert)
-import Control.Monad      (forM, liftM)
---import Data.Int (Int64)
-import Data.Monoid        ((<>),mconcat)
-import Data.Binary
-import Data.Binary.Get
-import Data.Char          (chr, ord, isPrint)
+
+--import           Data.Int                      (Int64)
+import           Control.Applicative
+import           Control.Exception             (assert)
+import           Control.Monad                 (forM, liftM)
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Bits                     (shiftL,complement,(.|.))
+import           Data.ByteString               (ByteString)
+import           Data.ByteString.Lazy.Builder
+import           Data.Char                     (chr, ord, isPrint,toLower,isLower,isUpper)
+import           Data.Maybe                    (fromMaybe)
+import           Data.Monoid                   ((<>),mconcat)
+import           Data.Proxy
+import           GHC.Generics
+import           GHC.TypeLits
+import           Prelude                hiding (id)
+import qualified Data.ByteString            as Byte
+import qualified Data.ByteString.Char8      as BB
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C
-import qualified Data.ByteString.Char8      as BB
-import Data.ByteString.Lazy.Builder
-
-import qualified Data.ByteString            as Byte
-import Data.ByteString (ByteString)
-import Control.Applicative
-import Data.Bits(shiftL,complement,(.|.))
+import qualified Prelude                       (id)
 
 
 nth                  :: Erlang a => Int -> ErlType -> a
@@ -64,76 +76,99 @@ data ErlType = ErlNull
              | ErlNewRef ErlType Int [Word8]  -- node creation id
              deriving (Eq, Show)
 
+{- | You can define your own instance or automatically derive it.
+
+     The automatically derived instance works converting each constructor into
+     a tuple with the same number of elements as values the constructor holds plus one, the
+     first element of the tuple is an atom like the Constructor's name but converted
+     into snake case, the remaining elements are the transformed values from the constructor
+     in the same order. In case it is a constructor with no values, then it will be converted
+     to an atom (instead of an tuple of 1 element). When checking against Constructor's names,
+     some flexivility is allowed, underscores are dropped and case ignored, this way, the 
+     atoms `aa_aa` and `aaa_a` will both match any constructor like `AA_aA`, `Aaaa`, `A__a_AA` 
+     or similar.
+
+     To automatically derive the class, you need to allow the language extensions  `DeriveGeneric`
+     and `DeriveAnyClass`; then on the data declaration just use 
+     `...deriving(..., Generic, ..., Erlang)`     
+-}
+
 class Erlang a where
-    toErlang   :: a -> ErlType
-    fromErlang :: ErlType -> a
+
+    toErlang              :: a -> ErlType
+    
+    default toErlang      :: (Generic a,GToErlang (Rep a)) => a -> ErlType
+    toErlang           = gToErlang . from
+
+
+    fromErlang            :: ErlType -> a
+    fromErlang x = fromMaybe (error $"error while parsing erlang type: "++show x) 
+                           $ fromErlangMay x
+
+
+    fromErlangMay         :: ErlType -> Maybe a
+    default fromErlangMay :: (Generic a,GFromErlang (Rep a)) => ErlType -> Maybe a
+    fromErlangMay         = fmap to . gFromErlang
 
 instance Erlang ErlType where
-    toErlang   = Prelude.id
-    fromErlang = Prelude.id
+    toErlang      = Prelude.id
+    fromErlangMay = Just
 
 instance Erlang Int where
     toErlang   x             
-       | abs x <= 0x7FFFFFFF = ErlInt x        
-       | otherwise           = ErlBigInt (fromIntegral x) -- Haskell Int (might) use 64 bits whether erlang's small Int use only 32 bit
+       | abs x <= 0x7FFFFFFF    = ErlInt x        
+       | otherwise              = ErlBigInt (fromIntegral x) -- Haskell Int (might) use 64 bits whether erlang's small Int use only 32 bit
 
-    fromErlang (ErlInt x)    = x
-    fromErlang (ErlBigInt x) = fromIntegral x
+    fromErlangMay (ErlInt x)    = Just x
+    fromErlangMay (ErlBigInt x) = Just (fromIntegral x)
+    fromErlangMay _             = Nothing
 
 instance Erlang Double where
-    toErlang   x            = ErlFloat x 
-    fromErlang (ErlFloat x) = x
+    toErlang   x               = ErlFloat x 
+    fromErlangMay (ErlFloat x) = Just x
+    fromErlangMay _            = Nothing
 
 instance Erlang Float where
-    toErlang x              = ErlFloat (realToFrac x)
-    fromErlang (ErlFloat x) = realToFrac x
+    toErlang x                 = ErlFloat (realToFrac x)
+    fromErlangMay (ErlFloat x) = Just $ realToFrac x
+    fromErlangMay _            = Nothing
 
 instance Erlang Integer where
-    toErlang   x             = ErlBigInt x
-    fromErlang (ErlInt x)    = fromIntegral x
-    fromErlang (ErlBigInt x) = x
+    toErlang   x                = ErlBigInt x
+    fromErlangMay (ErlInt x)    = Just$fromIntegral x
+    fromErlangMay (ErlBigInt x) = Just x
+    fromErlangMay _             = Nothing
 
 instance Erlang String where
     toErlang   x             = ErlString x
-    fromErlang ErlNull       = ""
-    fromErlang (ErlString x) = x
-    fromErlang (ErlAtom x)   = x
-    fromErlang (ErlList xs)  = map (chr . fromErlang) xs
-    fromErlang x             = error $ "can't convert to string: " ++ show x
+    fromErlangMay ErlNull       = Just ""
+    fromErlangMay (ErlString x) = Just x
+    fromErlangMay (ErlAtom x)   = Just x
+    fromErlangMay (ErlList xs)  = mapM (fmap chr . fromErlangMay) xs
+    fromErlangMay x             = Nothing
 
 instance Erlang Bool where
-    toErlang   True              = ErlAtom "true"
-    toErlang   False             = ErlAtom "false"
-    fromErlang (ErlAtom "true")  = True
-    fromErlang (ErlAtom "false") = False
-
-instance Erlang [ErlType] where
-    toErlang   []           = ErlNull
-    toErlang   xs           = ErlList xs
-    fromErlang ErlNull      = []
-    fromErlang (ErlList xs) = xs
+    toErlang   True                 = ErlAtom "true"
+    toErlang   False                = ErlAtom "false"
+    fromErlangMay (ErlAtom "true")  = Just True
+    fromErlangMay (ErlAtom "false") = Just False
+    fromErlangMay _                 = Nothing
 
 instance Erlang a => Erlang [a] where
-    toErlang   []           = ErlNull
-    toErlang   xs           = ErlList . map toErlang $ xs
-    fromErlang ErlNull      = []
-    fromErlang (ErlList xs) = map fromErlang xs
+    toErlang   []              = ErlNull
+    toErlang   xs              = ErlList . map toErlang $ xs
+    fromErlangMay ErlNull      = Just []
+    fromErlangMay (ErlList xs) = mapM fromErlangMay xs
 
-instance (Erlang a, Erlang b) => Erlang (a, b) where
-    toErlang   (x, y)            = ErlTuple [toErlang x, toErlang y]
-    fromErlang (ErlTuple [x, y]) = (fromErlang x, fromErlang y)
+-- Tuples are automatically instanced by generics :)
 
-instance (Erlang a, Erlang b, Erlang c) => Erlang (a, b, c) where
-    toErlang   (x, y, z)            = ErlTuple [toErlang x, toErlang y, toErlang z]
-    fromErlang (ErlTuple [x, y, z]) = (fromErlang x, fromErlang y, fromErlang z)
+instance (Erlang a, Erlang b) => Erlang (a, b) 
 
-instance (Erlang a, Erlang b, Erlang c, Erlang d) => Erlang (a, b, c, d) where
-    toErlang   (x, y, z, w)            = ErlTuple [toErlang x, toErlang y, toErlang z, toErlang w]
-    fromErlang (ErlTuple [x, y, z, w]) = (fromErlang x, fromErlang y, fromErlang z, fromErlang w)
+instance (Erlang a, Erlang b, Erlang c) => Erlang (a, b, c)
 
-instance (Erlang a, Erlang b, Erlang c, Erlang d, Erlang e) => Erlang (a, b, c, d, e) where
-    toErlang   (x, y, z, w, a)            = ErlTuple [toErlang x, toErlang y, toErlang z, toErlang w, toErlang a]
-    fromErlang (ErlTuple [x, y, z, w, a]) = (fromErlang x, fromErlang y, fromErlang z, fromErlang w, fromErlang a)
+instance (Erlang a, Erlang b, Erlang c, Erlang d) => Erlang (a, b, c, d)
+
+instance (Erlang a, Erlang b, Erlang c, Erlang d, Erlang e) => Erlang (a, b, c, d, e) 
 
 instance Binary ErlType where
     put = undefined
@@ -310,3 +345,147 @@ geta = liftM B.unpack . getLazyByteString . fromIntegral
 
 getA :: Int -> Get String
 getA = liftM C.unpack . getLazyByteString . fromIntegral
+
+-----------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------
+-- Classes for generic instances
+-----------------------------------------------------------------------------------------------------------------------
+
+
+
+class GToErlang   f where
+
+  gToErlang           :: f a -> ErlType
+
+instance GToErlang content => GToErlang (D1 meta content) where
+  gToErlang  = gToErlang . unM1
+
+
+instance (GToErlang contentA,GToErlang contentB) => GToErlang (contentA :+: contentB) where
+  gToErlang  (L1 x) = gToErlang  x 
+  gToErlang  (R1 x) = gToErlang  x 
+
+ 
+
+instance (Constructor meta) => GToErlang (C1 meta U1) where
+  gToErlang = ErlAtom . asAtom . conName   
+
+instance ( Constructor meta
+         , Erlang      k
+         ) => GToErlang (C1 meta (S1 m1 (K1 m2 k))) where
+  gToErlang cons@(M1 (M1 (K1 val))) = ErlTuple [ ErlAtom . asAtom $ conName cons
+                                               , toErlang val
+                                               ]
+
+
+instance ( Constructor    meta
+         , GToTupleErlang f
+         , GToTupleErlang g
+         ) => GToErlang (C1 meta (f :*: g)) where
+  gToErlang cons@(M1 x) = ErlTuple $ ErlAtom (asAtom$conName cons)
+                                   : gToTupleErlang x
+
+
+class GToTupleErlang f where
+  gToTupleErlang  :: f a -> [ErlType]
+
+instance ( GToTupleErlang f
+         , GToTupleErlang g
+         ) => GToTupleErlang (f :*: g)  where
+  gToTupleErlang (f :*: g) = gToTupleErlang f ++ gToTupleErlang g
+
+
+instance (Erlang k) => GToTupleErlang (S1 m1 (K1 m2 k))  where
+  gToTupleErlang (M1 (K1 x)) = [toErlang x] 
+
+----------------------------------------
+class GFromErlang f where
+  gFromErlang         :: ErlType -> Maybe (f a)
+
+
+instance GFromErlang content => GFromErlang (D1 meta content) where
+  gFromErlang  = fmap M1 . gFromErlang
+
+instance (GFromErlang contentA,GFromErlang contentB) => GFromErlang (contentA :+: contentB) where
+  gFromErlang x = L1 <$> gFromErlang x <|> R1<$> gFromErlang x
+
+
+instance (KnownSymbol symb) => GFromErlang (C1 ('MetaCons symb a b) U1) where
+
+  gFromErlang x = case x of
+                   ErlAtom atom 
+                      | asLenient (symbolVal (Proxy :: Proxy symb)) 
+                                                    == asLenient atom -> Just (M1 U1)
+                   _                                                  -> Nothing
+
+
+instance ( KnownSymbol symb
+         , GFromTupleErlang g
+         , GFromTupleErlang f
+         
+         ) => GFromErlang (C1 ('MetaCons symb a b) ( f :*: g) )where
+
+ gFromErlang x = case x of
+                   ErlTuple (ErlAtom atom:xs)
+                      | asLenient str == asLenient atom 
+                      , Just (y,[]) <- gFromTupleErlang xs           -> Just (M1 y)
+
+                   _                                                 -> Nothing
+    where
+      str = symbolVal (Proxy :: Proxy symb)
+
+instance ( KnownSymbol symb
+         , Erlang k
+         ) => GFromErlang (C1 ('MetaCons symb a b) (S1 m1 (K1 m2 k) ) ) where
+
+ gFromErlang x = case x of
+                  ErlTuple [ErlAtom atom,y]
+                   | asLenient str == asLenient atom
+                   , Just val    <- fromErlangMay y   -> Just (M1 (M1 (K1 val)))
+
+                  _                                   -> Nothing
+    where
+      str = symbolVal (Proxy :: Proxy symb)
+
+
+class GFromTupleErlang f where
+  gFromTupleErlang  :: [ErlType] -> Maybe (f a,[ErlType])
+
+instance ( GFromTupleErlang g
+         , GFromTupleErlang f
+         
+         ) => GFromTupleErlang  ( f :*: g)where
+  
+  gFromTupleErlang xs = case gFromTupleErlang xs of
+                          Just (a,ys)
+                             | Just (b,zs)  <- gFromTupleErlang ys   -> Just (a :*:b , zs)
+                          _                                          -> Nothing
+
+instance ( Erlang k
+         ) => GFromTupleErlang (S1 m1 (K1 m2 k) ) where
+  
+  gFromTupleErlang xs = case xs of
+                         x:ys
+                           | Just val <- fromErlangMay x -> Just (M1 (K1 val),ys)
+                         _                               -> Nothing
+
+
+
+asAtom        :: String -> String
+asAtom []     = []
+asAtom (x:xs) = toLower x : clean xs
+  where
+    clean str      = case str of 
+                       x:y:zs
+                         | isLower x && isUpper y -> x         : '_'             : clean (y:zs)
+                         | isUpper x && isUpper y -> let (bigs,other) = break isLower (zs)
+                                                      in (toLower<$>x:y:bigs) ++ "_"++ clean zs 
+
+                       xs                         -> asAtom str
+
+
+asLenient     :: String -> String
+asLenient     = fmap toLower .filter (/='_')
+
+
+
